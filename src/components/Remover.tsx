@@ -3,12 +3,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 
-// --- ICONS (Fixed & Added IconCheck) ---
-const IconBrush = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>;
-const IconEraser = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>;
+// --- ICONS ---
+const IconBrush = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>;
+const IconEraser = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>;
 const IconDownload = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>;
-const IconUndo = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>;
-const IconRedo = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>;
+const IconUndo = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>;
+const IconRedo = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>;
 const IconZoomIn = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>;
 const IconZoomOut = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" /></svg>;
 const IconHand = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" /></svg>;
@@ -57,10 +57,12 @@ export default function Remover() {
   const cursorRef = useRef<HTMLDivElement>(null); 
   const historyStack = useRef<ImageData[]>([]);
   const historyStep = useRef(-1);
-  const isPanning = useRef(false);
-  const startPan = useRef({ x: 0, y: 0 });
-  const isDrawing = useRef(false);
-  const lastPos = useRef({ x: 0, y: 0 });
+  
+  // Gesture Refs
+  const isDragging = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 }); // Mouse/Touch position
+  const initialPinchDist = useRef<number | null>(null);
+  const initialScale = useRef(1);
 
   // --- 1. WORKER & INIT ---
   useEffect(() => {
@@ -171,10 +173,8 @@ export default function Remover() {
     return () => clearTimeout(timer);
   }, [renderMainCanvas, hasProcessed]);
 
-  // --- 3. INPUT HANDLING ---
-  const getPointerPos = (e: any) => {
-    let clientX = e.clientX; let clientY = e.clientY;
-    if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+  // --- 3. INPUT HANDLING (Gestures) ---
+  const getPointerPos = (clientX: number, clientY: number) => {
     const rect = containerRef.current!.getBoundingClientRect();
     return {
         x: (clientX - rect.left - transform.x) / transform.scale,
@@ -183,42 +183,118 @@ export default function Remover() {
     };
   };
 
+  // --- MOUSE & TOUCH HANDLERS ---
   const handlePointerDown = (e: any) => {
     if (!hasProcessed) return;
-    if (activeTool === 'hand' || e.button === 1 || e.buttons === 4 || e.key === " ") {
-        isPanning.current = true; startPan.current = { x: e.clientX, y: e.clientY }; return;
+    
+    // Check for Two-Finger Touch (Pinch/Pan)
+    if (e.touches && e.touches.length === 2) {
+        isDragging.current = true;
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        initialPinchDist.current = dist;
+        initialScale.current = transform.scale;
+        lastPos.current = { 
+            x: (e.touches[0].clientX + e.touches[1].clientX) / 2, 
+            y: (e.touches[0].clientY + e.touches[1].clientY) / 2 
+        };
+        return;
     }
+
+    // One Finger / Mouse
+    let clientX = e.clientX; 
+    let clientY = e.clientY;
+    if (e.touches && e.touches.length > 0) { 
+        clientX = e.touches[0].clientX; 
+        clientY = e.touches[0].clientY; 
+    }
+
+    isDragging.current = true;
+    lastPos.current = { x: clientX, y: clientY };
+
+    // Tool Logic
     if (activeTool === 'brush' && brushMode !== 'none') {
-        isDrawing.current = true; const pos = getPointerPos(e); lastPos.current = { x: pos.x, y: pos.y }; draw(pos);
+        const pos = getPointerPos(clientX, clientY);
+        lastPos.current = { x: pos.x, y: pos.y }; // Reset for drawing
+        draw(pos);
     }
   };
 
   const handlePointerMove = (e: any) => {
     if (!hasProcessed) return;
-    const pos = getPointerPos(e);
+
+    // Handle Pinch Zoom / Two Finger Pan
+    if (e.touches && e.touches.length === 2) {
+        e.preventDefault(); // Stop browser zoom
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+        // Pan Logic
+        const dx = midX - lastPos.current.x;
+        const dy = midY - lastPos.current.y;
+        
+        // Zoom Logic
+        let newScale = transform.scale;
+        if (initialPinchDist.current) {
+            newScale = initialScale.current * (dist / initialPinchDist.current);
+        }
+
+        setTransform(p => ({ scale: newScale, x: p.x + dx, y: p.y + dy }));
+        lastPos.current = { x: midX, y: midY };
+        return;
+    }
+
+    let clientX = e.clientX; 
+    let clientY = e.clientY;
+    if (e.touches && e.touches.length > 0) { 
+        clientX = e.touches[0].clientX; 
+        clientY = e.touches[0].clientY; 
+    }
+
+    // Brush Cursor
     if (cursorRef.current && activeTool === 'brush' && brushMode !== 'none') {
-        cursorRef.current.style.left = `${pos.windowX}px`; cursorRef.current.style.top = `${pos.windowY}px`;
+        cursorRef.current.style.left = `${clientX}px`; cursorRef.current.style.top = `${clientY}px`;
         const size = brushSize * transform.scale; cursorRef.current.style.width = `${size}px`; cursorRef.current.style.height = `${size}px`;
     }
-    if (isPanning.current) {
-        const dx = e.clientX - startPan.current.x; const dy = e.clientY - startPan.current.y;
-        setTransform(p => ({ ...p, x: p.x + dx, y: p.y + dy })); startPan.current = { x: e.clientX, y: e.clientY }; return;
+
+    if (!isDragging.current) return;
+
+    // Pan (Hand Tool OR Middle Mouse)
+    if (activeTool === 'hand' || e.buttons === 4) {
+        const dx = clientX - lastPos.current.x;
+        const dy = clientY - lastPos.current.y;
+        setTransform(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+        lastPos.current = { x: clientX, y: clientY };
+        return;
     }
-    if (isDrawing.current) draw(pos);
+
+    // Draw
+    if (activeTool === 'brush' && brushMode !== 'none') {
+        const pos = getPointerPos(clientX, clientY);
+        draw(pos);
+    }
   };
 
   const handlePointerUp = () => {
-    if (isDrawing.current) { isDrawing.current = false; saveHistory(); }
-    isPanning.current = false;
+    if (activeTool === 'brush' && isDragging.current) { saveHistory(); }
+    isDragging.current = false;
+    initialPinchDist.current = null;
   };
 
   const draw = (pos: { x: number, y: number }) => {
     if (brushMode === 'none' || !maskCanvasRef.current) return;
     const ctx = maskCanvasRef.current.getContext('2d'); if (!ctx) return;
     ctx.beginPath(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = brushSize;
-    ctx.moveTo(lastPos.current.x, lastPos.current.y); ctx.lineTo(pos.x, pos.y);
+    
+    // For smoothness, if drawing, lastPos.current should be in canvas coords
+    if (activeTool === 'brush') {
+         ctx.moveTo(lastPos.current.x, lastPos.current.y);
+         ctx.lineTo(pos.x, pos.y);
+    }
+    
     ctx.globalCompositeOperation = brushMode === 'erase' ? 'destination-out' : 'source-over'; ctx.strokeStyle = brushMode === 'erase' ? 'rgba(0,0,0,1)' : 'white';
-    ctx.stroke(); lastPos.current = { x: pos.x, y: pos.y };
+    ctx.stroke(); 
+    lastPos.current = { x: pos.x, y: pos.y };
     updateSubjectLayer(); renderMainCanvas();
   };
 
@@ -268,7 +344,7 @@ export default function Remover() {
       .bg-checkerboard { background-image: linear-gradient(45deg, #e2e8f0 25%, transparent 25%), linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e8f0 75%), linear-gradient(-45deg, transparent 75%, #e2e8f0 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
     `}</style>
 
-    <div className="flex h-screen w-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
+    <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 text-slate-800 font-sans overflow-hidden select-none">
       
       {/* --- FIXED CURSOR --- */}
       {brushMode !== 'none' && activeTool === 'brush' && (
@@ -276,104 +352,161 @@ export default function Remover() {
           style={{ backgroundColor: brushMode === 'erase' ? 'rgba(255,0,0,0.2)' : 'rgba(74, 222, 128, 0.2)', left: '-100px', top: '-100px' }} />
       )}
 
-      {/* --- LEFT SIDEBAR (FIXED WIDTH - BLUE THEME) --- */}
-      <div className="w-[320px] flex-shrink-0 flex flex-col border-r border-slate-200 bg-white z-20 shadow-lg hidden md:flex">
-         <div className="flex border-b border-slate-100 bg-slate-50">
-            <button onClick={() => setActiveTab('bg')} className={`flex-1 py-4 text-[11px] font-bold uppercase tracking-wider transition-all ${activeTab==='bg' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600'}`}>BG & Outline</button>
-            <button onClick={() => setActiveTab('shadow')} className={`flex-1 py-4 text-[11px] font-bold uppercase tracking-wider transition-all ${activeTab==='shadow' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600'}`}>Shadow</button>
-            <button onClick={() => setActiveTab('adjust')} className={`flex-1 py-4 text-[11px] font-bold uppercase tracking-wider transition-all ${activeTab==='adjust' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600'}`}>Adjust</button>
+      {/* --- CANVAS VIEWPORT --- */}
+      <div className={`flex-1 flex flex-col relative bg-slate-50/50 order-1 md:order-2 ${!originalImage ? 'h-full' : 'h-[60vh] md:h-full'}`}>
+         
+         {/* DESKTOP HEADER */}
+         <div className="h-14 md:h-16 border-b border-slate-200 bg-white flex items-center justify-between px-4 md:px-6 shadow-sm z-10">
+            <div className="flex items-center gap-4">
+                <span className="text-lg md:text-xl font-bold text-blue-700">FreeBgAI</span>
+                {hasProcessed && (
+                    <div className="hidden md:flex items-center gap-1 pl-4 border-l border-slate-200">
+                        <button onClick={undo} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md"><IconUndo/></button>
+                        <button onClick={redo} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md"><IconRedo/></button>
+                        <div className="w-px h-4 bg-slate-200 mx-2"/>
+                        <button onClick={() => setActiveTool('hand')} className={`p-2 rounded-md ${activeTool === 'hand' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-100'}`}><IconHand/></button>
+                    </div>
+                )}
+            </div>
+            {hasProcessed && (
+                <div className="flex items-center gap-2">
+                    <button onClick={() => { setOriginalImage(null); setHasProcessed(false); }} className="text-[10px] md:text-xs font-bold text-slate-500 hover:text-red-500 px-3 py-2 hover:bg-red-50 rounded-md">New</button>
+                    <button onClick={() => { const link = document.createElement('a'); link.download = 'freebgai-edit.png'; link.href = canvasRef.current?.toDataURL() || ''; link.click(); }} className="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-[10px] md:text-xs font-bold">
+                        <IconDownload /> <span className="hidden md:inline">Download</span>
+                    </button>
+                </div>
+            )}
          </div>
 
+         {/* INTERACTIVE AREA */}
+         <div ref={containerRef} className={`flex-1 relative ${!originalImage ? 'overflow-y-auto' : 'overflow-hidden'} bg-checkerboard cursor-grab active:cursor-grabbing`}
+            onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} onTouchMove={handlePointerMove} onTouchStart={handlePointerDown} onTouchEnd={handlePointerUp}
+            style={{ touchAction: 'none', cursor: activeTool === 'hand' ? (isPanning.current ? 'grabbing' : 'grab') : (brushMode !== 'none' ? 'none' : 'default') }}>
+            
+            {/* --- MOBILE FLOATING TOOLBAR (NEW) --- */}
+            {hasProcessed && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-white/90 backdrop-blur-md p-2 rounded-full shadow-xl border border-slate-200 md:hidden">
+                    <button onClick={undo} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-600 hover:bg-slate-100 active:scale-95"><IconUndo /></button>
+                    <button onClick={() => setActiveTool(activeTool === 'brush' ? 'hand' : 'brush')} className={`w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-95 ${activeTool==='brush' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                        {activeTool === 'brush' ? <IconBrush/> : <IconHand/>}
+                    </button>
+                    <button onClick={redo} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-600 hover:bg-slate-100 active:scale-95"><IconRedo /></button>
+                </div>
+            )}
+
+            {!originalImage ? (
+                // LANDING PAGE (Responsive)
+                <div className="min-h-full flex flex-col items-center p-4 md:p-8 pb-32">
+                        <div {...getRootProps()} className={`w-full max-w-2xl h-[300px] md:h-[400px] border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center hover:border-blue-400 hover:bg-white/50 transition-all cursor-pointer group bg-white/40 backdrop-blur-sm mb-12 ${isDragActive ? "bg-blue-50/50" : ""}`}>
+                            <input {...getInputProps()} />
+                            <div className="p-4 bg-white rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform text-blue-600"><IconUpload /></div>
+                            <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-2">Upload Image</h2>
+                            <p className="text-slate-500 mb-6 text-sm">Drag & drop or tap to browse</p>
+                        </div>
+                        <div className="max-w-4xl w-full text-slate-600 px-2">
+                             <div className="text-center mb-12">
+                                <h1 className="text-2xl md:text-5xl font-bold mb-4 text-slate-900 leading-tight">Unlimited Local <br/><span className="text-blue-600">Background Remover</span></h1>
+                                <p className="text-base md:text-lg leading-relaxed max-w-2xl mx-auto">FreeBgAI removes backgrounds in your browser. Photos never leave your device. 100% Free & Private.</p>
+                             </div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+                                <div>
+                                    <h2 className="text-xl font-bold mb-3 text-slate-800">For Creators</h2>
+                                    <ul className="space-y-3">
+                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Add <strong>white outline</strong> instantly.</span></li>
+                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Download transparent PNGs.</span></li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold mb-3 text-slate-800">For E-Commerce</h2>
+                                    <ul className="space-y-3">
+                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Convert to <strong>pure white</strong> background.</span></li>
+                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Add realistic <strong>drop shadows</strong>.</span></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                </div>
+            ) : (
+                <>
+                    {loading && (
+                        <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-md flex flex-col items-center justify-center">
+                            <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                            <p className="text-blue-900 font-bold text-sm animate-pulse">{status}</p>
+                        </div>
+                    )}
+                    {!hasProcessed && !loading && (
+                        <div className="absolute z-50 inset-0 flex items-center justify-center pointer-events-none">
+                            <button onClick={runAI} className="pointer-events-auto bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold px-8 py-3 rounded-full shadow-xl hover:scale-105 transition-all flex items-center gap-2">
+                                <span>⚡</span> Remove BG
+                            </button>
+                        </div>
+                    )}
+                    <canvas ref={canvasRef} style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0' }} className={`shadow-2xl transition-opacity duration-500 ${!hasProcessed ? 'opacity-50 blur-sm grayscale' : ''}`} />
+                </>
+            )}
+         </div>
+      </div>
+
+      {/* --- SIDEBAR / BOTTOM SHEET (TOOLS) --- */}
+      <div className={`flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-r border-slate-200 bg-white z-20 shadow-lg order-2 md:order-1 
+            ${!originalImage ? 'hidden md:flex md:w-[320px]' : 'w-full h-[40vh] md:h-full md:w-[320px] flex'}`}>
+         
+         {/* TABS */}
+         <div className="flex border-b border-slate-100 bg-slate-50 flex-shrink-0">
+            {['bg', 'shadow', 'adjust'].map((t) => (
+                <button key={t} onClick={() => setActiveTab(t as any)} className={`flex-1 py-3 md:py-4 text-[10px] md:text-[11px] font-bold uppercase tracking-wider ${activeTab===t ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-slate-400'}`}>
+                    {t==='bg' ? 'BG & Outline' : t}
+                </button>
+            ))}
+         </div>
+
+         {/* SCROLLABLE TOOLS */}
          <div className="flex-1 overflow-y-auto custom-scrollbar relative">
             {hasProcessed ? (
-                <div className="p-6 space-y-8 animate-in fade-in duration-500">
-                    {/* TAB CONTENT: BG */}
+                <div className="p-4 md:p-6 space-y-6 md:space-y-8 pb-20 md:pb-6">
+                    {/* TAB: BG */}
                     {activeTab === 'bg' && (
                         <>
-                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex gap-3 shadow-sm items-start">
-                                <span className="text-blue-500 text-lg">💡</span>
-                                <p className="text-[11px] text-blue-800 leading-snug font-medium pt-1">Pro Tip: Apply Red Outline to verify the cutout is perfect.</p>
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-slate-700 uppercase">Outline</label>
+                                <button onClick={() => setStrokeEnabled(!strokeEnabled)} className={`w-9 h-5 rounded-full relative transition-colors ${strokeEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}><div className={`w-3 h-3 bg-white rounded-full absolute top-1 shadow-sm transition-all ${strokeEnabled ? 'left-5' : 'left-1'}`} /></button>
                             </div>
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Outline (Stroke)</label>
-                                    <button onClick={() => setStrokeEnabled(!strokeEnabled)} className={`w-9 h-5 rounded-full relative transition-colors ${strokeEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                                        <div className={`w-3 h-3 bg-white rounded-full absolute top-1 shadow-sm transition-all ${strokeEnabled ? 'left-5' : 'left-1'}`} />
-                                    </button>
-                                </div>
-                                <div className={`transition-all duration-300 space-y-3 ${strokeEnabled ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                                    <input type="range" min="0" max="50" value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg accent-blue-600 cursor-pointer" />
-                                    <div className="flex items-center gap-3">
-                                        <div className="relative w-8 h-8 rounded-full shadow-sm border border-slate-200 flex items-center justify-center bg-[conic-gradient(at_center,_red,_orange,_yellow,_green,_blue,_purple,_red)] cursor-pointer hover:scale-105 transition-transform">
-                                            <div className="w-3 h-3 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center pointer-events-none"><span className="text-[8px] font-bold">+</span></div>
-                                            <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setStrokeColor(e.target.value)} />
-                                        </div>
-                                        <div className="w-8 h-8 rounded-full border border-slate-200 shadow-inner" style={{backgroundColor: strokeColor}} />
-                                    </div>
-                                </div>
+                            <div className={`${strokeEnabled ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+                                <input type="range" min="0" max="50" value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-blue-600" />
+                                <div className="flex gap-2 mt-2"><input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0" /></div>
                             </div>
-                            <div className="border-t border-slate-100 pt-6 space-y-4">
-                                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Background</label>
-                                <div className="flex flex-wrap gap-2">
-                                    <button onClick={() => setBgColor('transparent')} className="w-8 h-8 rounded-full border border-slate-200 bg-checkerboard hover:scale-110 transition-transform shadow-sm" title="Transparent" />
-                                    <button onClick={() => setBgColor('#ffffff')} className="w-8 h-8 rounded-full border border-slate-200 bg-white hover:scale-110 transition-transform shadow-sm" title="White" />
-                                    <button onClick={() => setBgColor('#000000')} className="w-8 h-8 rounded-full border border-slate-200 bg-black hover:scale-110 transition-transform shadow-sm" title="Black" />
-                                    <div className="relative w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center bg-[conic-gradient(at_center,_red,_orange,_yellow,_green,_blue,_purple,_red)] cursor-pointer hover:scale-110 transition-transform">
-                                        <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setBgColor(e.target.value)} />
-                                    </div>
-                                </div>
-                                <div className="space-y-2 pt-2">
-                                    <div className="flex justify-between"><span className="text-xs text-slate-500 font-medium">Blur</span><span className="text-xs font-mono text-slate-400">{bgBlur}px</span></div>
-                                    <input type="range" min="0" max="20" value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg accent-slate-400 cursor-pointer" />
+                            <hr className="border-slate-100"/>
+                            <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase mb-2 block">Background</label>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setBgColor('transparent')} className="w-8 h-8 rounded-full border border-slate-200 bg-checkerboard" />
+                                    <button onClick={() => setBgColor('#ffffff')} className="w-8 h-8 rounded-full border border-slate-200 bg-white" />
+                                    <button onClick={() => setBgColor('#000000')} className="w-8 h-8 rounded-full border border-slate-200 bg-black" />
+                                    <input type="color" onChange={(e) => setBgColor(e.target.value)} className="w-8 h-8 rounded-full cursor-pointer p-0 border-0" />
                                 </div>
                             </div>
                         </>
                     )}
-                    {/* TAB CONTENT: SHADOW */}
+                    {/* TAB: SHADOW */}
                     {activeTab === 'shadow' && (
-                        <div className="space-y-6">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2"><IconShadow/> Drop Shadow</label>
-                                <button onClick={() => setShadowEnabled(!shadowEnabled)} className={`w-9 h-5 rounded-full relative transition-colors ${shadowEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-1 shadow-sm transition-all ${shadowEnabled ? 'left-5' : 'left-1'}`} />
-                                </button>
-                            </div>
-                            <div className={`space-y-5 transition-opacity duration-300 ${shadowEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="relative w-8 h-8 rounded-full shadow-sm border border-slate-200 flex items-center justify-center bg-[conic-gradient(at_center,_red,_orange,_yellow,_green,_blue,_purple,_red)] cursor-pointer hover:scale-105 transition-transform">
-                                        <div className="w-3 h-3 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center pointer-events-none"><span className="text-[8px] font-bold">+</span></div>
-                                        <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e)=>setShadowColor(e.target.value)} />
-                                    </div>
-                                    <div className="w-8 h-8 rounded-full border border-slate-200 shadow-inner" style={{backgroundColor: shadowColor}} />
-                                </div>
-                                <div className="space-y-4">
-                                    {[{l:'Opacity', v:shadowOpacity, s:setShadowOpacity, m:1, st:0.1}, {l:'Blur', v:shadowBlur, s:setShadowBlur, m:100, st:1}].map((i,k) => (
-                                        <div key={k} className="space-y-1">
-                                            <div className="flex justify-between"><span className="text-xs text-slate-500">{i.l}</span><span className="text-xs font-mono text-slate-400">{Math.round(i.v*(i.l==='Opacity'?100:1))}</span></div>
-                                            <input type="range" min="0" max={i.m} step={i.st} value={i.v} onChange={(e)=>i.s(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg accent-slate-500" />
-                                        </div>
-                                    ))}
-                                    <div className="grid grid-cols-2 gap-4 pt-2">
-                                        <div className="space-y-1"><span className="text-xs text-slate-500 block text-center">X Offset</span><input type="range" min="-400" max="400" value={shadowX} onChange={(e)=>setShadowX(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg accent-slate-500" /></div>
-                                        <div className="space-y-1"><span className="text-xs text-slate-500 block text-center">Y Offset</span><input type="range" min="-400" max="400" value={shadowY} onChange={(e)=>setShadowY(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg accent-slate-500" /></div>
-                                    </div>
-                                </div>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between"><label className="text-xs font-bold text-slate-700 uppercase">Enable Shadow</label><button onClick={() => setShadowEnabled(!shadowEnabled)} className={`w-9 h-5 rounded-full relative transition-colors ${shadowEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}><div className={`w-3 h-3 bg-white rounded-full absolute top-1 shadow-sm transition-all ${shadowEnabled ? 'left-5' : 'left-1'}`} /></button></div>
+                            <div className={`${shadowEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'} space-y-4`}>
+                                <div className="space-y-1"><span className="text-xs text-slate-500">Opacity</span><input type="range" min="0" max="1" step="0.1" value={shadowOpacity} onChange={(e)=>setShadowOpacity(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" /></div>
+                                <div className="space-y-1"><span className="text-xs text-slate-500">Blur</span><input type="range" min="0" max="100" value={shadowBlur} onChange={(e)=>setShadowBlur(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" /></div>
                             </div>
                         </div>
                     )}
-                    {/* TAB CONTENT: ADJUST */}
+                    {/* TAB: ADJUST */}
                     {activeTab === 'adjust' && (
-                        <div className="space-y-6">
-                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 flex gap-2"><span className="text-xs">🎨</span><p className="text-[11px] text-slate-600 leading-snug pt-0.5">Adjust subject lighting to match the new background.</p></div>
-                            <div className="space-y-5">
-                                {[{l:'Brightness', v:brightness, s:setBrightness}, {l:'Contrast', v:contrast, s:setContrast}, {l:'Saturation', v:saturation, s:setSaturation}].map((i,k) => (
-                                    <div key={k} className="space-y-2">
-                                        <div className="flex justify-between"><span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{i.l}</span><span className="text-xs font-mono text-slate-400">{i.v}%</span></div>
-                                        <input type="range" min="0" max="200" value={i.v} onChange={(e)=>i.s(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg accent-blue-600" />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                         <div className="space-y-4">
+                            {[{l:'Brightness', v:brightness, s:setBrightness}, {l:'Contrast', v:contrast, s:setContrast}].map((i,k) => (
+                                <div key={k} className="space-y-1">
+                                    <span className="text-xs font-bold text-slate-600 uppercase">{i.l}</span>
+                                    <input type="range" min="0" max="200" value={i.v} onChange={(e)=>i.s(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-blue-600" />
+                                </div>
+                            ))}
+                         </div>
                     )}
                     {/* BOTTOM: REFINE TOOLS */}
                     <div className="border-t border-slate-100 pt-6 mt-6 pb-6">
@@ -386,7 +519,7 @@ export default function Remover() {
                         {brushMode !== 'none' && (
                             <div className="animate-in fade-in slide-in-from-bottom-2 space-y-2">
                                 <div className="flex justify-between"><span className="text-xs text-slate-500">Brush Size</span><span className="text-xs font-mono">{brushSize}px</span></div>
-                                <input type="range" min="10" max="300" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg accent-slate-500" />
+                                <input type="range" min="10" max="300" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" />
                             </div>
                         )}
                     </div>
@@ -394,125 +527,12 @@ export default function Remover() {
             ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-40">
                     <IconLayers />
-                    <p className="text-sm font-bold text-slate-400 mt-4">No Image Selected</p>
-                    <p className="text-[10px] text-slate-400 mt-1 max-w-[150px]">Upload an image to unlock the full Studio suite.</p>
+                    <p className="text-sm font-bold text-slate-400 mt-4">No Image</p>
                 </div>
             )}
          </div>
       </div>
 
-      {/* --- MAIN APP AREA (BLUE THEME + SCROLL FIX) --- */}
-      <div className="flex-1 flex flex-col h-full relative bg-slate-50/50">
-         {/* TOP TOOLBAR */}
-         <div className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 shadow-sm z-10">
-            <div className="flex items-center gap-4">
-                <span className="text-xl font-bold text-blue-700 hidden md:block">FreeBgAI</span>
-                {hasProcessed && (
-                    <div className="flex items-center gap-1 pl-4 border-l border-slate-200">
-                        <button onClick={undo} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors" title="Undo"><IconUndo/></button>
-                        <button onClick={redo} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors" title="Redo"><IconRedo/></button>
-                        <div className="w-px h-4 bg-slate-200 mx-2"/>
-                        <button onClick={() => setActiveTool('hand')} className={`p-2 rounded-md transition-colors ${activeTool === 'hand' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-100'}`} title="Hand Tool"><IconHand/></button>
-                        <div className="w-px h-4 bg-slate-200 mx-2"/>
-                        <button onClick={() => setTransform(t=>({...t, scale: t.scale * 1.1}))} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md"><IconZoomIn/></button>
-                        <span className="text-xs font-mono text-slate-400 w-12 text-center">{Math.round(transform.scale*100)}%</span>
-                        <button onClick={() => setTransform(t=>({...t, scale: Math.max(0.1, t.scale * 0.9)}))} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md"><IconZoomOut/></button>
-                    </div>
-                )}
-            </div>
-            {hasProcessed && (
-                <div className="flex items-center gap-3">
-                    <button onClick={() => { setOriginalImage(null); setHasProcessed(false); }} className="text-xs font-bold text-slate-500 hover:text-red-500 px-4 py-2 hover:bg-red-50 rounded-md transition-colors">New Image</button>
-                    <button onClick={() => { const link = document.createElement('a'); link.download = 'freebgai-edit.png'; link.href = canvasRef.current?.toDataURL() || ''; link.click(); }} className="bg-slate-900 hover:bg-black text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl transition-all flex items-center gap-2 text-xs font-bold">
-                        <IconDownload /> Download HD
-                    </button>
-                </div>
-            )}
-         </div>
-
-         {/* CANVAS VIEWPORT / UPLOAD AREA (FIXED SCROLLING) */}
-         <div ref={containerRef} className={`flex-1 relative ${!originalImage ? 'overflow-y-auto' : 'overflow-hidden'} bg-checkerboard cursor-grab active:cursor-grabbing`}
-            onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
-            style={{ touchAction: 'none', cursor: activeTool === 'hand' ? (isPanning.current ? 'grabbing' : 'grab') : (brushMode !== 'none' ? 'none' : 'default') }}>
-            
-            {!originalImage ? (
-                // --- THE SEO LANDING PAGE (SCROLLABLE & FULLY VISIBLE) ---
-                <div className="min-h-full flex flex-col items-center p-8 pb-32">
-                        {/* 1. UPLOAD BOX (Hero) */}
-                        <div {...getRootProps()} className={`w-full max-w-2xl h-[400px] border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center hover:border-blue-400 hover:bg-white/50 transition-all cursor-pointer group bg-white/40 backdrop-blur-sm mb-16 ${isDragActive ? "bg-blue-50/50" : ""}`}>
-                            <input {...getInputProps()} />
-                            <div className="p-5 bg-white rounded-full shadow-sm mb-6 group-hover:scale-110 transition-transform duration-300 text-blue-600"><IconUpload /></div>
-                            <h2 className="text-2xl font-bold text-slate-800 mb-2">Upload an Image</h2>
-                            <p className="text-slate-500 mb-8">Drag & drop or click to browse</p>
-                            <div className="flex gap-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                <span className="bg-white px-3 py-1 rounded shadow-sm">JPG</span>
-                                <span className="bg-white px-3 py-1 rounded shadow-sm">PNG</span>
-                                <span className="bg-white px-3 py-1 rounded shadow-sm">WEBP</span>
-                            </div>
-                        </div>
-
-                        {/* 2. SEO CONTENT (Visible below the fold) */}
-                        <div className="max-w-4xl w-full text-slate-600">
-                             <div className="text-center mb-16">
-                                <h1 className="text-3xl md:text-5xl font-bold mb-6 text-slate-900 leading-tight">
-                                The First Unlimited Local <br/><span className="text-blue-600">Background Remover</span>
-                                </h1>
-                                <p className="text-lg leading-relaxed max-w-2xl mx-auto">
-                                FreeBgAI is a privacy-first AI tool that removes image backgrounds directly in your browser. 
-                                Unlike other tools, your photos never leave your device. 100% Free. Unlimited HD.
-                                </p>
-                             </div>
-
-                             <div className="grid md:grid-cols-2 gap-12">
-                                <div>
-                                    <h2 className="text-2xl font-bold mb-4 text-slate-800">For YouTubers & Creators</h2>
-                                    <p className="mb-4 text-sm leading-relaxed">
-                                    Create viral thumbnails in seconds. Our "Studio Mode" allows you to:
-                                    </p>
-                                    <ul className="space-y-3">
-                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Add a <strong>white outline (stroke)</strong> instantly.</span></li>
-                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Adjust brightness to make faces pop.</span></li>
-                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Download transparent PNGs.</span></li>
-                                    </ul>
-                                </div>
-                                <div>
-                                    <h2 className="text-2xl font-bold mb-4 text-slate-800">For Amazon & E-Commerce</h2>
-                                    <p className="mb-4 text-sm leading-relaxed">
-                                    Sellers on Amazon, Shopify, and Etsy can create compliant images:
-                                    </p>
-                                    <ul className="space-y-3">
-                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Convert backgrounds to <strong>pure white</strong>.</span></li>
-                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Add realistic <strong>drop shadows</strong>.</span></li>
-                                        <li className="flex gap-2 items-center"><IconCheck/><span className="text-sm">Process unlimited photos for free.</span></li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                </div>
-            ) : (
-                <>
-                    {/* APP MODE: Loading & Canvas */}
-                    {loading && (
-                        <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-md flex flex-col items-center justify-center">
-                            <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-6"></div>
-                            <p className="text-blue-900 font-bold text-lg animate-pulse">{status}</p>
-                        </div>
-                    )}
-                    {!hasProcessed && !loading && (
-                        <div className="absolute z-50 inset-0 flex items-center justify-center pointer-events-none">
-                            <button onClick={runAI} className="pointer-events-auto bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold px-10 py-4 rounded-full shadow-2xl hover:shadow-blue-500/30 hover:scale-105 transition-all transform flex items-center gap-3">
-                                <span>⚡</span> Remove Background
-                            </button>
-                        </div>
-                    )}
-                    <canvas ref={canvasRef} 
-                        style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0' }} 
-                        className={`shadow-2xl transition-opacity duration-500 ${!hasProcessed ? 'opacity-50 blur-sm grayscale' : ''}`} 
-                    />
-                </>
-            )}
-         </div>
-      </div>
     </div>
     </>
   );
