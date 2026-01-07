@@ -26,7 +26,7 @@ export default function Remover() {
   const [hasProcessed, setHasProcessed] = useState(false);
   
   // Performance State
-  const [isInteracting, setIsInteracting] = useState(false); // New: To disable heavy effects while dragging
+  const [isInteracting, setIsInteracting] = useState(false); 
 
   // Tools & Viewport
   const [activeTab, setActiveTab] = useState<'bg' | 'shadow' | 'adjust'>('bg');
@@ -35,21 +35,21 @@ export default function Remover() {
   const [brushSize, setBrushSize] = useState(50);
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   
-  // --- FEATURE STATE ---
+  // --- FULL FEATURE STATE (RESTORED) ---
   const [bgColor, setBgColor] = useState<string>("transparent"); 
-  const [bgBlur, setBgBlur] = useState(0);
+  const [bgBlur, setBgBlur] = useState(0); // Restored Blur
   const [shadowEnabled, setShadowEnabled] = useState(false);
   const [shadowColor, setShadowColor] = useState("#000000");
   const [shadowBlur, setShadowBlur] = useState(15);
-  const [shadowX, setShadowX] = useState(10);
-  const [shadowY, setShadowY] = useState(10);
+  const [shadowX, setShadowX] = useState(10); // Restored X
+  const [shadowY, setShadowY] = useState(10); // Restored Y
   const [shadowOpacity, setShadowOpacity] = useState(0.5);
   const [strokeEnabled, setStrokeEnabled] = useState(false);
   const [strokeWidth, setStrokeWidth] = useState(5);
   const [strokeColor, setStrokeColor] = useState("#ff0000");
   const [brightness, setBrightness] = useState(100); 
   const [contrast, setContrast] = useState(100); 
-  const [saturation, setSaturation] = useState(100); 
+  const [saturation, setSaturation] = useState(100); // Restored Saturation
 
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -60,7 +60,7 @@ export default function Remover() {
   const cursorRef = useRef<HTMLDivElement>(null); 
   const historyStack = useRef<ImageData[]>([]);
   const historyStep = useRef(-1);
-  const rafRef = useRef<number | null>(null); // For animation frame throttling
+  const rafRef = useRef<number | null>(null);
   
   // Gesture Refs
   const isDragging = useRef(false);
@@ -74,7 +74,7 @@ export default function Remover() {
       worker.current = new Worker(new URL('../app/worker.js', import.meta.url), { type: 'module' });
       worker.current.onmessage = async (e) => {
         const { status, blob, progress } = e.data;
-        if (status === 'loading') setStatus(progress ? `AI Analyzing... ${Math.round(progress)}%` : "Loading Model...");
+        if (status === 'loading') setStatus(progress ? `AI Analyzing... ${Math.round(progress)}%` : "Loading AI...");
         if (status === 'complete') {
             const img = new Image();
             img.src = URL.createObjectURL(blob);
@@ -89,15 +89,25 @@ export default function Remover() {
   useEffect(() => {
     if (maskImage && originalImage) {
         const w = originalImage.width; const h = originalImage.height;
+        
+        // 1. Prepare Mask Layer (High Precision)
         const mCanvas = document.createElement('canvas'); mCanvas.width = w; mCanvas.height = h;
         const mCtx = mCanvas.getContext('2d');
         if (mCtx) {
-            mCtx.drawImage(maskImage, 0, 0); mCtx.globalCompositeOperation = 'source-in'; mCtx.fillStyle = 'white'; mCtx.fillRect(0, 0, w, h);
+            mCtx.drawImage(maskImage, 0, 0); 
+            // Boost Mask Contrast (Fixes Ghosting)
+            mCtx.globalCompositeOperation = 'source-in';
+            mCtx.fillStyle = 'white'; 
+            mCtx.fillRect(0, 0, w, h);
             historyStack.current = [mCtx.getImageData(0, 0, w, h)]; historyStep.current = 0;
         }
         maskCanvasRef.current = mCanvas;
+
+        // 2. Prepare Subject Layer
         const sCanvas = document.createElement('canvas'); sCanvas.width = w; sCanvas.height = h;
         subjectCanvasRef.current = sCanvas;
+
+        // 3. Auto Fit
         if (containerRef.current) {
             const { clientWidth, clientHeight } = containerRef.current;
             const scale = Math.min(clientWidth / w, clientHeight / h) * 0.8; 
@@ -112,8 +122,10 @@ export default function Remover() {
     if (!originalImage || !maskCanvasRef.current || !subjectCanvasRef.current) return;
     const ctx = subjectCanvasRef.current.getContext('2d');
     if (!ctx) return;
-    ctx.globalCompositeOperation = 'source-over';
+    
     ctx.clearRect(0, 0, subjectCanvasRef.current.width, subjectCanvasRef.current.height);
+    // Composite: Draw Mask -> Source In Original
+    ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(maskCanvasRef.current, 0, 0);
     ctx.globalCompositeOperation = 'source-in';
     ctx.drawImage(originalImage, 0, 0);
@@ -132,8 +144,11 @@ export default function Remover() {
         canvas.width = originalImage.width;
         canvas.height = originalImage.height;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
 
-        // --- BACKGROUND ---
+        // --- LAYER 1: BACKGROUND ---
         if (bgColor !== 'transparent') {
             if (bgColor === 'gradient') {
                 const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
@@ -141,49 +156,48 @@ export default function Remover() {
                 ctx.fillStyle = grad;
             } else { ctx.fillStyle = bgColor; }
             
-            // Only apply blur if NOT interacting (Speed Hack)
-            if (bgColor === 'transparent' && bgBlur > 0) {
-                ctx.save(); 
-                if (!isInteracting) ctx.filter = `blur(${bgBlur}px)`; 
+            ctx.save(); 
+            // Apply Blur ONLY to background image if set
+            if (bgColor === 'transparent' && bgBlur > 0 && !isInteracting) {
+                ctx.filter = `blur(${bgBlur}px)`; 
                 ctx.drawImage(originalImage, 0, 0); 
-                ctx.restore();
-            } else if (bgColor !== 'transparent') {
+            } else if (bgColor === 'transparent' && bgBlur === 0) {
+                // Do nothing (transparent)
+            } else {
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
+            ctx.restore();
         } else if (bgBlur > 0) {
-            ctx.save(); 
-            if (!isInteracting) ctx.filter = `blur(${bgBlur}px)`; 
-            ctx.drawImage(originalImage, 0, 0); 
+            ctx.save();
+            if (!isInteracting) ctx.filter = `blur(${bgBlur}px)`;
+            ctx.drawImage(originalImage, 0, 0);
             ctx.restore();
         }
 
-        // --- SHADOW (Disabled during interaction for FPS) ---
+        // --- LAYER 2: SHADOW (Using Mask) ---
         if (shadowEnabled) {
             ctx.save();
-            ctx.translate(shadowX, shadowY);
+            ctx.translate(shadowX, shadowY); // Use Real X/Y Offsets
             ctx.globalAlpha = shadowOpacity;
             if (!isInteracting) ctx.filter = `drop-shadow(0 0 ${shadowBlur}px ${shadowColor})`;
+            else ctx.filter = `drop-shadow(0 0 ${shadowBlur/2}px ${shadowColor})`; // Faster shadow on drag
             ctx.drawImage(maskCanvas, 0, 0); 
             ctx.restore();
         }
 
-        // --- STROKE (Disabled during interaction for FPS) ---
+        // --- LAYER 3: STROKE (Using Mask) ---
         if (strokeEnabled && strokeWidth > 0) {
             ctx.save();
             const scaleFactor = Math.max(1, canvas.width / 1000);
             const actualStroke = strokeWidth * scaleFactor;
-            // Only render complex double-shadow stroke when not moving
-            if (!isInteracting) {
-                ctx.filter = `drop-shadow(0 0 ${actualStroke}px ${strokeColor}) drop-shadow(0 0 ${actualStroke/2}px ${strokeColor})`;
-            } else {
-                // Simple stroke for speed when moving
-                ctx.filter = `drop-shadow(0 0 ${actualStroke}px ${strokeColor})`;
-            }
+            ctx.filter = `drop-shadow(0 0 ${actualStroke}px ${strokeColor})`;
+            // Second shadow for solidity only when static
+            if (!isInteracting) ctx.filter += ` drop-shadow(0 0 ${actualStroke/2}px ${strokeColor})`;
             ctx.drawImage(maskCanvas, 0, 0);
             ctx.restore();
         }
 
-        // --- SUBJECT ---
+        // --- LAYER 4: SUBJECT ---
         ctx.save();
         ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
         ctx.drawImage(subjectCanvas, 0, 0);
@@ -209,31 +223,19 @@ export default function Remover() {
 
   const handlePointerDown = (e: any) => {
     if (!hasProcessed) return;
-    setIsInteracting(true); // Start Performance Mode
-    
-    // Check for Two-Finger Touch
+    setIsInteracting(true); 
     if (e.touches && e.touches.length === 2) {
         isDragging.current = true;
         const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         initialPinchDist.current = dist;
         initialScale.current = transform.scale;
-        lastPos.current = { 
-            x: (e.touches[0].clientX + e.touches[1].clientX) / 2, 
-            y: (e.touches[0].clientY + e.touches[1].clientY) / 2 
-        };
+        lastPos.current = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
         return;
     }
-
-    let clientX = e.clientX; 
-    let clientY = e.clientY;
-    if (e.touches && e.touches.length > 0) { 
-        clientX = e.touches[0].clientX; 
-        clientY = e.touches[0].clientY; 
-    }
-
+    let clientX = e.clientX; let clientY = e.clientY;
+    if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
     isDragging.current = true;
     lastPos.current = { x: clientX, y: clientY };
-
     if (activeTool === 'brush' && brushMode !== 'none') {
         const pos = getPointerPos(clientX, clientY);
         lastPos.current = { x: pos.x, y: pos.y }; 
@@ -243,56 +245,36 @@ export default function Remover() {
 
   const handlePointerMove = (e: any) => {
     if (!hasProcessed) return;
-
     if (e.touches && e.touches.length === 2) {
         e.preventDefault();
         const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-
-        const dx = midX - lastPos.current.x;
-        const dy = midY - lastPos.current.y;
-        
+        const dx = midX - lastPos.current.x; const dy = midY - lastPos.current.y;
         let newScale = transform.scale;
-        if (initialPinchDist.current) {
-            newScale = initialScale.current * (dist / initialPinchDist.current);
-        }
-
+        if (initialPinchDist.current) { newScale = initialScale.current * (dist / initialPinchDist.current); }
         setTransform(p => ({ scale: newScale, x: p.x + dx, y: p.y + dy }));
         lastPos.current = { x: midX, y: midY };
         return;
     }
-
-    let clientX = e.clientX; 
-    let clientY = e.clientY;
-    if (e.touches && e.touches.length > 0) { 
-        clientX = e.touches[0].clientX; 
-        clientY = e.touches[0].clientY; 
-    }
-
+    let clientX = e.clientX; let clientY = e.clientY;
+    if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
     if (cursorRef.current && activeTool === 'brush' && brushMode !== 'none') {
         cursorRef.current.style.left = `${clientX}px`; cursorRef.current.style.top = `${clientY}px`;
         const size = brushSize * transform.scale; cursorRef.current.style.width = `${size}px`; cursorRef.current.style.height = `${size}px`;
     }
-
     if (!isDragging.current) return;
-
     if (activeTool === 'hand' || e.buttons === 4) {
-        const dx = clientX - lastPos.current.x;
-        const dy = clientY - lastPos.current.y;
+        const dx = clientX - lastPos.current.x; const dy = clientY - lastPos.current.y;
         setTransform(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
         lastPos.current = { x: clientX, y: clientY };
         return;
     }
-
-    if (activeTool === 'brush' && brushMode !== 'none') {
-        const pos = getPointerPos(clientX, clientY);
-        draw(pos);
-    }
+    if (activeTool === 'brush' && brushMode !== 'none') { const pos = getPointerPos(clientX, clientY); draw(pos); }
   };
 
   const handlePointerUp = () => {
-    setIsInteracting(false); // End Performance Mode (High Quality comes back)
+    setIsInteracting(false); 
     if (activeTool === 'brush' && isDragging.current) { saveHistory(); }
     isDragging.current = false;
     initialPinchDist.current = null;
@@ -302,14 +284,9 @@ export default function Remover() {
     if (brushMode === 'none' || !maskCanvasRef.current) return;
     const ctx = maskCanvasRef.current.getContext('2d'); if (!ctx) return;
     ctx.beginPath(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = brushSize;
-    if (activeTool === 'brush') {
-         ctx.moveTo(lastPos.current.x, lastPos.current.y);
-         ctx.lineTo(pos.x, pos.y);
-    }
+    if (activeTool === 'brush') { ctx.moveTo(lastPos.current.x, lastPos.current.y); ctx.lineTo(pos.x, pos.y); }
     ctx.globalCompositeOperation = brushMode === 'erase' ? 'destination-out' : 'source-over'; ctx.strokeStyle = brushMode === 'erase' ? 'rgba(0,0,0,1)' : 'white';
-    ctx.stroke(); 
-    lastPos.current = { x: pos.x, y: pos.y };
-    updateSubjectLayer(); renderMainCanvas();
+    ctx.stroke(); lastPos.current = { x: pos.x, y: pos.y }; updateSubjectLayer(); renderMainCanvas();
   };
 
   const saveHistory = () => {
@@ -327,7 +304,7 @@ export default function Remover() {
     ctx.putImageData(historyStack.current[historyStep.current], 0, 0); updateSubjectLayer(); renderMainCanvas();
   };
   
-  // --- ROBUST AI RUNNER (Fixes "Delete Everything") ---
+  // --- UTILS (HIGH QUALITY LOAD) ---
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]; if (!file) return;
     const img = new Image(); img.src = URL.createObjectURL(file);
@@ -335,6 +312,7 @@ export default function Remover() {
         setOriginalImage(img); setMaskImage(null); setHasProcessed(false); setBgColor("transparent"); 
         setStatus("Ready"); historyStack.current = []; historyStep.current = -1;
         setShadowEnabled(false); setBgBlur(0); setBrightness(100); setContrast(100); setSaturation(100); setStrokeEnabled(false);
+        setShadowX(10); setShadowY(10); // Reset Shadows
     };
   }, []);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'image/*': [] }, multiple: false });
@@ -342,23 +320,9 @@ export default function Remover() {
   const runAI = async () => { 
     if (!originalImage || !worker.current) return; 
     setLoading(true); 
-    
-    // PRECISION FIX: 1024px gives better accuracy than 1280px for standard models
-    const MAX_SIZE = 1024; 
-    let w = originalImage.width; let h = originalImage.height;
-    if (w > MAX_SIZE || h > MAX_SIZE) { const ratio = Math.min(MAX_SIZE / w, MAX_SIZE / h); w = Math.round(w * ratio); h = Math.round(h * ratio); }
-    
-    const tempCanvas = document.createElement('canvas'); 
-    tempCanvas.width = w; tempCanvas.height = h;
-    const ctx = tempCanvas.getContext('2d'); 
-    
-    // SAFETY: Ensure image is drawn
-    if(ctx) {
-        ctx.drawImage(originalImage, 0, 0, w, h);
-        tempCanvas.toBlob(async (blob) => { 
-            if(blob) worker.current?.postMessage({ imageBlob: blob }); 
-        }, 'image/jpeg', 0.8); // 0.8 Quality is faster
-    }
+    const response = await fetch(originalImage.src);
+    const blob = await response.blob();
+    worker.current.postMessage({ imageBlob: blob });
   };
 
   return (
@@ -377,8 +341,8 @@ export default function Remover() {
           style={{ backgroundColor: brushMode === 'erase' ? 'rgba(255,0,0,0.2)' : 'rgba(74, 222, 128, 0.2)', left: '-100px', top: '-100px' }} />
       )}
 
+      {/* --- CANVAS --- */}
       <div className={`flex-1 flex flex-col relative bg-slate-50/50 order-1 md:order-2 ${!originalImage ? 'h-full' : 'h-[60vh] md:h-full'}`}>
-         
          <div className="h-14 md:h-16 border-b border-slate-200 bg-white flex items-center justify-between px-4 md:px-6 shadow-sm z-10">
             <div className="flex items-center gap-4">
                 <span className="text-lg md:text-xl font-bold text-blue-700">FreeBgAI</span>
@@ -467,8 +431,9 @@ export default function Remover() {
          </div>
       </div>
 
+      {/* --- SIDEBAR / BOTTOM SHEET --- */}
       <div className={`flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-r border-slate-200 bg-white z-20 shadow-lg order-2 md:order-1 
-            ${!originalImage ? 'hidden md:flex md:w-[320px]' : 'w-full h-[40vh] md:h-full md:w-[320px] flex'}`}>
+            ${!originalImage ? 'hidden md:flex md:w-[320px]' : 'w-full h-[45vh] md:h-full md:w-[320px] flex'}`}>
          
          <div className="flex border-b border-slate-100 bg-slate-50 flex-shrink-0">
             {['bg', 'shadow', 'adjust'].map((t) => (
@@ -481,6 +446,8 @@ export default function Remover() {
          <div className="flex-1 overflow-y-auto custom-scrollbar relative">
             {hasProcessed ? (
                 <div className="p-4 md:p-6 space-y-6 md:space-y-8 pb-20 md:pb-6">
+                    
+                    {/* TAB: BG */}
                     {activeTab === 'bg' && (
                         <>
                             <div className="flex items-center justify-between">
@@ -489,39 +456,68 @@ export default function Remover() {
                             </div>
                             <div className={`${strokeEnabled ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
                                 <input type="range" min="0" max="50" value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-blue-600" />
-                                <div className="flex gap-2 mt-2"><input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0" /></div>
+                                <div className="flex gap-2 mt-2">
+                                    <div className="relative w-8 h-8 rounded-full shadow-sm border border-slate-200 flex items-center justify-center bg-[conic-gradient(at_center,_red,_orange,_yellow,_green,_blue,_purple,_red)] cursor-pointer hover:scale-105 transition-transform">
+                                        <div className="w-3 h-3 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center pointer-events-none"><span className="text-[8px] font-bold">+</span></div>
+                                        <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setStrokeColor(e.target.value)} />
+                                    </div>
+                                    <div className="w-8 h-8 rounded-full border border-slate-200 shadow-inner" style={{backgroundColor: strokeColor}} />
+                                </div>
                             </div>
                             <hr className="border-slate-100"/>
                             <div>
                                 <label className="text-xs font-bold text-slate-700 uppercase mb-2 block">Background</label>
-                                <div className="flex gap-2">
-                                    <button onClick={() => setBgColor('transparent')} className="w-8 h-8 rounded-full border border-slate-200 bg-checkerboard" />
-                                    <button onClick={() => setBgColor('#ffffff')} className="w-8 h-8 rounded-full border border-slate-200 bg-white" />
-                                    <button onClick={() => setBgColor('#000000')} className="w-8 h-8 rounded-full border border-slate-200 bg-black" />
-                                    <input type="color" onChange={(e) => setBgColor(e.target.value)} className="w-8 h-8 rounded-full cursor-pointer p-0 border-0" />
+                                <div className="flex gap-2 mb-4">
+                                    <button onClick={() => setBgColor('transparent')} className="w-8 h-8 rounded-full border border-slate-200 bg-checkerboard" title="Transparent" />
+                                    <button onClick={() => setBgColor('#ffffff')} className="w-8 h-8 rounded-full border border-slate-200 bg-white" title="White" />
+                                    <button onClick={() => setBgColor('#000000')} className="w-8 h-8 rounded-full border border-slate-200 bg-black" title="Black" />
+                                    <div className="relative w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center bg-[conic-gradient(at_center,_red,_orange,_yellow,_green,_blue,_purple,_red)] cursor-pointer hover:scale-110 transition-transform">
+                                        <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setBgColor(e.target.value)} />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between"><span className="text-xs text-slate-500">Blur</span><span className="text-xs font-mono text-slate-400">{bgBlur}px</span></div>
+                                    <input type="range" min="0" max="20" value={bgBlur} onChange={(e) => setBgBlur(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-400" />
                                 </div>
                             </div>
                         </>
                     )}
+
+                    {/* TAB: SHADOW */}
                     {activeTab === 'shadow' && (
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                             <div className="flex items-center justify-between"><label className="text-xs font-bold text-slate-700 uppercase">Enable Shadow</label><button onClick={() => setShadowEnabled(!shadowEnabled)} className={`w-9 h-5 rounded-full relative transition-colors ${shadowEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}><div className={`w-3 h-3 bg-white rounded-full absolute top-1 shadow-sm transition-all ${shadowEnabled ? 'left-5' : 'left-1'}`} /></button></div>
                             <div className={`${shadowEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'} space-y-4`}>
+                                <div className="flex gap-2 mb-2">
+                                    <div className="relative w-8 h-8 rounded-full shadow-sm border border-slate-200 flex items-center justify-center bg-[conic-gradient(at_center,_red,_orange,_yellow,_green,_blue,_purple,_red)] cursor-pointer hover:scale-105 transition-transform">
+                                        <div className="w-3 h-3 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center pointer-events-none"><span className="text-[8px] font-bold">+</span></div>
+                                        <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e)=>setShadowColor(e.target.value)} />
+                                    </div>
+                                    <div className="w-8 h-8 rounded-full border border-slate-200 shadow-inner" style={{backgroundColor: shadowColor}} />
+                                </div>
                                 <div className="space-y-1"><span className="text-xs text-slate-500">Opacity</span><input type="range" min="0" max="1" step="0.1" value={shadowOpacity} onChange={(e)=>setShadowOpacity(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" /></div>
-                                <div className="space-y-1"><span className="text-xs text-slate-500">Blur</span><input type="range" min="0" max="100" value={shadowBlur} onChange={(e)=>setShadowBlur(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" /></div>
+                                <div className="space-y-1"><span className="text-xs text-slate-500">Blur Radius</span><input type="range" min="0" max="100" value={shadowBlur} onChange={(e)=>setShadowBlur(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" /></div>
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <div className="space-y-1"><span className="text-xs text-slate-500 text-center block">X Offset</span><input type="range" min="-100" max="100" value={shadowX} onChange={(e)=>setShadowX(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" /></div>
+                                    <div className="space-y-1"><span className="text-xs text-slate-500 text-center block">Y Offset</span><input type="range" min="-100" max="100" value={shadowY} onChange={(e)=>setShadowY(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-slate-500" /></div>
+                                </div>
                             </div>
                         </div>
                     )}
+
+                    {/* TAB: ADJUST */}
                     {activeTab === 'adjust' && (
-                         <div className="space-y-4">
-                            {[{l:'Brightness', v:brightness, s:setBrightness}, {l:'Contrast', v:contrast, s:setContrast}].map((i,k) => (
+                         <div className="space-y-6">
+                            {[{l:'Brightness', v:brightness, s:setBrightness}, {l:'Contrast', v:contrast, s:setContrast}, {l:'Saturation', v:saturation, s:setSaturation}].map((i,k) => (
                                 <div key={k} className="space-y-1">
-                                    <span className="text-xs font-bold text-slate-600 uppercase">{i.l}</span>
+                                    <div className="flex justify-between"><span className="text-xs font-bold text-slate-600 uppercase">{i.l}</span><span className="text-xs font-mono text-slate-400">{i.v}%</span></div>
                                     <input type="range" min="0" max="200" value={i.v} onChange={(e)=>i.s(Number(e.target.value))} className="w-full h-8 md:h-1.5 accent-blue-600" />
                                 </div>
                             ))}
                          </div>
                     )}
+
+                    {/* BOTTOM: REFINE TOOLS */}
                     <div className="border-t border-slate-100 pt-6 mt-6 pb-6">
                         <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 block">Refine Edge</label>
                         <div className="grid grid-cols-3 gap-2 mb-4">

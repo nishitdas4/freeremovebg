@@ -1,37 +1,12 @@
 {
   "Version": 1,
   "WorkspaceRootPath": "C:\\Users\\NISHIT DAS\\bg-remover\\",
-  "Documents": [
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\NISHIT DAS\\bg-remover\\src\\components\\Remover.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\components\\Remover.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}"
-    }
-  ],
+  "Documents": [],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
       "VerticalTabListWidth": 256,
-      "DocumentGroups": [
-        {
-          "DockedWidth": 200,
-          "SelectedChildIndex": 0,
-          "Children": [
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "Remover.tsx",
-              "DocumentMoniker": "C:\\Users\\NISHIT DAS\\bg-remover\\src\\components\\Remover.tsx",
-              "RelativeDocumentMoniker": "src\\components\\Remover.tsx",
-              "ToolTip": "C:\\Users\\NISHIT DAS\\bg-remover\\src\\components\\Remover.tsx",
-              "RelativeToolTip": "src\\components\\Remover.tsx",
-              "ViewState": "AgIAAPcBAAAAAAAAAAAswBkCAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
-              "WhenOpened": "2026-01-07T15:25:49.802Z",
-              "EditorCaption": ""
-            }
-          ]
-        }
-      ]
+      "DocumentGroups": []
     }
   ]
 }
