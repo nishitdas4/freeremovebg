@@ -24,6 +24,9 @@ export default function Remover() {
   const [originalImage, setOriginalImage] = useState<HTMLImageElement | null>(null);
   const [maskImage, setMaskImage] = useState<HTMLImageElement | null>(null);
   const [hasProcessed, setHasProcessed] = useState(false);
+  
+  // Performance State
+  const [isInteracting, setIsInteracting] = useState(false); // New: To disable heavy effects while dragging
 
   // Tools & Viewport
   const [activeTab, setActiveTab] = useState<'bg' | 'shadow' | 'adjust'>('bg');
@@ -57,6 +60,7 @@ export default function Remover() {
   const cursorRef = useRef<HTMLDivElement>(null); 
   const historyStack = useRef<ImageData[]>([]);
   const historyStep = useRef(-1);
+  const rafRef = useRef<number | null>(null); // For animation frame throttling
   
   // Gesture Refs
   const isDragging = useRef(false);
@@ -70,7 +74,7 @@ export default function Remover() {
       worker.current = new Worker(new URL('../app/worker.js', import.meta.url), { type: 'module' });
       worker.current.onmessage = async (e) => {
         const { status, blob, progress } = e.data;
-        if (status === 'loading') setStatus(progress ? `AI Processing... ${Math.round(progress)}%` : "Initializing...");
+        if (status === 'loading') setStatus(progress ? `AI Analyzing... ${Math.round(progress)}%` : "Loading Model...");
         if (status === 'complete') {
             const img = new Image();
             img.src = URL.createObjectURL(blob);
@@ -116,64 +120,84 @@ export default function Remover() {
   };
 
   const renderMainCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    const subjectCanvas = subjectCanvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    if (!canvas || !ctx || !originalImage || !subjectCanvas || !maskCanvas) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    
+    rafRef.current = requestAnimationFrame(() => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        const subjectCanvas = subjectCanvasRef.current;
+        const maskCanvas = maskCanvasRef.current;
+        if (!canvas || !ctx || !originalImage || !subjectCanvas || !maskCanvas) return;
 
-    canvas.width = originalImage.width;
-    canvas.height = originalImage.height;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = originalImage.width;
+        canvas.height = originalImage.height;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (bgColor !== 'transparent') {
-        if (bgColor === 'gradient') {
-            const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-            grad.addColorStop(0, "#8EC5FC"); grad.addColorStop(1, "#E0C3FC");
-            ctx.fillStyle = grad;
-        } else { ctx.fillStyle = bgColor; }
-        
-        if (bgColor === 'transparent' && bgBlur > 0) {
-            ctx.save(); ctx.filter = `blur(${bgBlur}px)`; ctx.drawImage(originalImage, 0, 0); ctx.restore();
-        } else if (bgColor !== 'transparent') {
-             ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // --- BACKGROUND ---
+        if (bgColor !== 'transparent') {
+            if (bgColor === 'gradient') {
+                const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                grad.addColorStop(0, "#8EC5FC"); grad.addColorStop(1, "#E0C3FC");
+                ctx.fillStyle = grad;
+            } else { ctx.fillStyle = bgColor; }
+            
+            // Only apply blur if NOT interacting (Speed Hack)
+            if (bgColor === 'transparent' && bgBlur > 0) {
+                ctx.save(); 
+                if (!isInteracting) ctx.filter = `blur(${bgBlur}px)`; 
+                ctx.drawImage(originalImage, 0, 0); 
+                ctx.restore();
+            } else if (bgColor !== 'transparent') {
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        } else if (bgBlur > 0) {
+            ctx.save(); 
+            if (!isInteracting) ctx.filter = `blur(${bgBlur}px)`; 
+            ctx.drawImage(originalImage, 0, 0); 
+            ctx.restore();
         }
-    } else if (bgBlur > 0) {
-        ctx.save(); ctx.filter = `blur(${bgBlur}px)`; ctx.drawImage(originalImage, 0, 0); ctx.restore();
-    }
 
-    if (shadowEnabled) {
+        // --- SHADOW (Disabled during interaction for FPS) ---
+        if (shadowEnabled) {
+            ctx.save();
+            ctx.translate(shadowX, shadowY);
+            ctx.globalAlpha = shadowOpacity;
+            if (!isInteracting) ctx.filter = `drop-shadow(0 0 ${shadowBlur}px ${shadowColor})`;
+            ctx.drawImage(maskCanvas, 0, 0); 
+            ctx.restore();
+        }
+
+        // --- STROKE (Disabled during interaction for FPS) ---
+        if (strokeEnabled && strokeWidth > 0) {
+            ctx.save();
+            const scaleFactor = Math.max(1, canvas.width / 1000);
+            const actualStroke = strokeWidth * scaleFactor;
+            // Only render complex double-shadow stroke when not moving
+            if (!isInteracting) {
+                ctx.filter = `drop-shadow(0 0 ${actualStroke}px ${strokeColor}) drop-shadow(0 0 ${actualStroke/2}px ${strokeColor})`;
+            } else {
+                // Simple stroke for speed when moving
+                ctx.filter = `drop-shadow(0 0 ${actualStroke}px ${strokeColor})`;
+            }
+            ctx.drawImage(maskCanvas, 0, 0);
+            ctx.restore();
+        }
+
+        // --- SUBJECT ---
         ctx.save();
-        ctx.translate(shadowX, shadowY);
-        ctx.globalAlpha = shadowOpacity;
-        ctx.filter = `drop-shadow(0 0 ${shadowBlur}px ${shadowColor})`;
-        ctx.drawImage(maskCanvas, 0, 0); 
+        ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
+        ctx.drawImage(subjectCanvas, 0, 0);
         ctx.restore();
-    }
+    });
 
-    if (strokeEnabled && strokeWidth > 0) {
-        ctx.save();
-        const scaleFactor = Math.max(1, canvas.width / 1000);
-        const actualStroke = strokeWidth * scaleFactor;
-        ctx.filter = `drop-shadow(0 0 ${actualStroke}px ${strokeColor}) drop-shadow(0 0 ${actualStroke/2}px ${strokeColor})`;
-        ctx.drawImage(maskCanvas, 0, 0);
-        ctx.restore();
-    }
-
-    ctx.save();
-    ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
-    ctx.drawImage(subjectCanvas, 0, 0);
-    ctx.restore();
-
-  }, [bgColor, bgBlur, shadowEnabled, shadowColor, shadowBlur, shadowX, shadowY, shadowOpacity, strokeEnabled, strokeWidth, strokeColor, brightness, contrast, saturation, originalImage]);
+  }, [bgColor, bgBlur, shadowEnabled, shadowColor, shadowBlur, shadowX, shadowY, shadowOpacity, strokeEnabled, strokeWidth, strokeColor, brightness, contrast, saturation, originalImage, isInteracting]);
 
   useEffect(() => {
     if (!hasProcessed) return;
-    const timer = setTimeout(() => renderMainCanvas(), 10);
-    return () => clearTimeout(timer);
+    renderMainCanvas();
   }, [renderMainCanvas, hasProcessed]);
 
-  // --- 3. INPUT HANDLING (Gestures) ---
+  // --- 3. INPUT HANDLING ---
   const getPointerPos = (clientX: number, clientY: number) => {
     const rect = containerRef.current!.getBoundingClientRect();
     return {
@@ -183,11 +207,11 @@ export default function Remover() {
     };
   };
 
-  // --- MOUSE & TOUCH HANDLERS ---
   const handlePointerDown = (e: any) => {
     if (!hasProcessed) return;
+    setIsInteracting(true); // Start Performance Mode
     
-    // Check for Two-Finger Touch (Pinch/Pan)
+    // Check for Two-Finger Touch
     if (e.touches && e.touches.length === 2) {
         isDragging.current = true;
         const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
@@ -200,7 +224,6 @@ export default function Remover() {
         return;
     }
 
-    // One Finger / Mouse
     let clientX = e.clientX; 
     let clientY = e.clientY;
     if (e.touches && e.touches.length > 0) { 
@@ -211,10 +234,9 @@ export default function Remover() {
     isDragging.current = true;
     lastPos.current = { x: clientX, y: clientY };
 
-    // Tool Logic
     if (activeTool === 'brush' && brushMode !== 'none') {
         const pos = getPointerPos(clientX, clientY);
-        lastPos.current = { x: pos.x, y: pos.y }; // Reset for drawing
+        lastPos.current = { x: pos.x, y: pos.y }; 
         draw(pos);
     }
   };
@@ -222,18 +244,15 @@ export default function Remover() {
   const handlePointerMove = (e: any) => {
     if (!hasProcessed) return;
 
-    // Handle Pinch Zoom / Two Finger Pan
     if (e.touches && e.touches.length === 2) {
-        e.preventDefault(); // Stop browser zoom
+        e.preventDefault();
         const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
 
-        // Pan Logic
         const dx = midX - lastPos.current.x;
         const dy = midY - lastPos.current.y;
         
-        // Zoom Logic
         let newScale = transform.scale;
         if (initialPinchDist.current) {
             newScale = initialScale.current * (dist / initialPinchDist.current);
@@ -251,7 +270,6 @@ export default function Remover() {
         clientY = e.touches[0].clientY; 
     }
 
-    // Brush Cursor
     if (cursorRef.current && activeTool === 'brush' && brushMode !== 'none') {
         cursorRef.current.style.left = `${clientX}px`; cursorRef.current.style.top = `${clientY}px`;
         const size = brushSize * transform.scale; cursorRef.current.style.width = `${size}px`; cursorRef.current.style.height = `${size}px`;
@@ -259,7 +277,6 @@ export default function Remover() {
 
     if (!isDragging.current) return;
 
-    // Pan (Hand Tool OR Middle Mouse)
     if (activeTool === 'hand' || e.buttons === 4) {
         const dx = clientX - lastPos.current.x;
         const dy = clientY - lastPos.current.y;
@@ -268,7 +285,6 @@ export default function Remover() {
         return;
     }
 
-    // Draw
     if (activeTool === 'brush' && brushMode !== 'none') {
         const pos = getPointerPos(clientX, clientY);
         draw(pos);
@@ -276,6 +292,7 @@ export default function Remover() {
   };
 
   const handlePointerUp = () => {
+    setIsInteracting(false); // End Performance Mode (High Quality comes back)
     if (activeTool === 'brush' && isDragging.current) { saveHistory(); }
     isDragging.current = false;
     initialPinchDist.current = null;
@@ -285,13 +302,10 @@ export default function Remover() {
     if (brushMode === 'none' || !maskCanvasRef.current) return;
     const ctx = maskCanvasRef.current.getContext('2d'); if (!ctx) return;
     ctx.beginPath(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = brushSize;
-    
-    // For smoothness, if drawing, lastPos.current should be in canvas coords
     if (activeTool === 'brush') {
          ctx.moveTo(lastPos.current.x, lastPos.current.y);
          ctx.lineTo(pos.x, pos.y);
     }
-    
     ctx.globalCompositeOperation = brushMode === 'erase' ? 'destination-out' : 'source-over'; ctx.strokeStyle = brushMode === 'erase' ? 'rgba(0,0,0,1)' : 'white';
     ctx.stroke(); 
     lastPos.current = { x: pos.x, y: pos.y };
@@ -313,6 +327,7 @@ export default function Remover() {
     ctx.putImageData(historyStack.current[historyStep.current], 0, 0); updateSubjectLayer(); renderMainCanvas();
   };
   
+  // --- ROBUST AI RUNNER (Fixes "Delete Everything") ---
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]; if (!file) return;
     const img = new Image(); img.src = URL.createObjectURL(file);
@@ -323,15 +338,27 @@ export default function Remover() {
     };
   }, []);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'image/*': [] }, multiple: false });
+  
   const runAI = async () => { 
     if (!originalImage || !worker.current) return; 
     setLoading(true); 
-    const MAX_SIZE = 1280; 
+    
+    // PRECISION FIX: 1024px gives better accuracy than 1280px for standard models
+    const MAX_SIZE = 1024; 
     let w = originalImage.width; let h = originalImage.height;
     if (w > MAX_SIZE || h > MAX_SIZE) { const ratio = Math.min(MAX_SIZE / w, MAX_SIZE / h); w = Math.round(w * ratio); h = Math.round(h * ratio); }
-    const tempCanvas = document.createElement('canvas'); tempCanvas.width = w; tempCanvas.height = h;
-    const ctx = tempCanvas.getContext('2d'); ctx?.drawImage(originalImage, 0, 0, w, h);
-    tempCanvas.toBlob(async (blob) => { if(blob) worker.current?.postMessage({ imageBlob: blob }); }, 'image/jpeg', 0.9);
+    
+    const tempCanvas = document.createElement('canvas'); 
+    tempCanvas.width = w; tempCanvas.height = h;
+    const ctx = tempCanvas.getContext('2d'); 
+    
+    // SAFETY: Ensure image is drawn
+    if(ctx) {
+        ctx.drawImage(originalImage, 0, 0, w, h);
+        tempCanvas.toBlob(async (blob) => { 
+            if(blob) worker.current?.postMessage({ imageBlob: blob }); 
+        }, 'image/jpeg', 0.8); // 0.8 Quality is faster
+    }
   };
 
   return (
@@ -345,16 +372,13 @@ export default function Remover() {
 
     <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 text-slate-800 font-sans overflow-hidden select-none">
       
-      {/* --- FIXED CURSOR --- */}
       {brushMode !== 'none' && activeTool === 'brush' && (
         <div ref={cursorRef} className="fixed pointer-events-none z-50 rounded-full border border-white/50 ring-1 ring-black/50 -translate-x-1/2 -translate-y-1/2"
           style={{ backgroundColor: brushMode === 'erase' ? 'rgba(255,0,0,0.2)' : 'rgba(74, 222, 128, 0.2)', left: '-100px', top: '-100px' }} />
       )}
 
-      {/* --- CANVAS VIEWPORT --- */}
       <div className={`flex-1 flex flex-col relative bg-slate-50/50 order-1 md:order-2 ${!originalImage ? 'h-full' : 'h-[60vh] md:h-full'}`}>
          
-         {/* DESKTOP HEADER */}
          <div className="h-14 md:h-16 border-b border-slate-200 bg-white flex items-center justify-between px-4 md:px-6 shadow-sm z-10">
             <div className="flex items-center gap-4">
                 <span className="text-lg md:text-xl font-bold text-blue-700">FreeBgAI</span>
@@ -377,12 +401,10 @@ export default function Remover() {
             )}
          </div>
 
-         {/* INTERACTIVE AREA */}
          <div ref={containerRef} className={`flex-1 relative ${!originalImage ? 'overflow-y-auto' : 'overflow-hidden'} bg-checkerboard cursor-grab active:cursor-grabbing`}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} onTouchMove={handlePointerMove} onTouchStart={handlePointerDown} onTouchEnd={handlePointerUp}
             style={{ touchAction: 'none', cursor: activeTool === 'hand' ? (isDragging.current ? 'grabbing' : 'grab') : (brushMode !== 'none' ? 'none' : 'default') }}>
             
-            {/* --- MOBILE FLOATING TOOLBAR (NEW) --- */}
             {hasProcessed && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-white/90 backdrop-blur-md p-2 rounded-full shadow-xl border border-slate-200 md:hidden">
                     <button onClick={undo} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-600 hover:bg-slate-100 active:scale-95"><IconUndo /></button>
@@ -394,7 +416,6 @@ export default function Remover() {
             )}
 
             {!originalImage ? (
-                // LANDING PAGE (Responsive)
                 <div className="min-h-full flex flex-col items-center p-4 md:p-8 pb-32">
                         <div {...getRootProps()} className={`w-full max-w-2xl h-[300px] md:h-[400px] border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center hover:border-blue-400 hover:bg-white/50 transition-all cursor-pointer group bg-white/40 backdrop-blur-sm mb-12 ${isDragActive ? "bg-blue-50/50" : ""}`}>
                             <input {...getInputProps()} />
@@ -446,11 +467,9 @@ export default function Remover() {
          </div>
       </div>
 
-      {/* --- SIDEBAR / BOTTOM SHEET (TOOLS) --- */}
       <div className={`flex-shrink-0 flex flex-col border-t md:border-t-0 md:border-r border-slate-200 bg-white z-20 shadow-lg order-2 md:order-1 
             ${!originalImage ? 'hidden md:flex md:w-[320px]' : 'w-full h-[40vh] md:h-full md:w-[320px] flex'}`}>
          
-         {/* TABS */}
          <div className="flex border-b border-slate-100 bg-slate-50 flex-shrink-0">
             {['bg', 'shadow', 'adjust'].map((t) => (
                 <button key={t} onClick={() => setActiveTab(t as any)} className={`flex-1 py-3 md:py-4 text-[10px] md:text-[11px] font-bold uppercase tracking-wider ${activeTab===t ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-slate-400'}`}>
@@ -459,11 +478,9 @@ export default function Remover() {
             ))}
          </div>
 
-         {/* SCROLLABLE TOOLS */}
          <div className="flex-1 overflow-y-auto custom-scrollbar relative">
             {hasProcessed ? (
                 <div className="p-4 md:p-6 space-y-6 md:space-y-8 pb-20 md:pb-6">
-                    {/* TAB: BG */}
                     {activeTab === 'bg' && (
                         <>
                             <div className="flex items-center justify-between">
@@ -486,7 +503,6 @@ export default function Remover() {
                             </div>
                         </>
                     )}
-                    {/* TAB: SHADOW */}
                     {activeTab === 'shadow' && (
                         <div className="space-y-4">
                             <div className="flex items-center justify-between"><label className="text-xs font-bold text-slate-700 uppercase">Enable Shadow</label><button onClick={() => setShadowEnabled(!shadowEnabled)} className={`w-9 h-5 rounded-full relative transition-colors ${shadowEnabled ? 'bg-blue-600' : 'bg-slate-200'}`}><div className={`w-3 h-3 bg-white rounded-full absolute top-1 shadow-sm transition-all ${shadowEnabled ? 'left-5' : 'left-1'}`} /></button></div>
@@ -496,7 +512,6 @@ export default function Remover() {
                             </div>
                         </div>
                     )}
-                    {/* TAB: ADJUST */}
                     {activeTab === 'adjust' && (
                          <div className="space-y-4">
                             {[{l:'Brightness', v:brightness, s:setBrightness}, {l:'Contrast', v:contrast, s:setContrast}].map((i,k) => (
@@ -507,7 +522,6 @@ export default function Remover() {
                             ))}
                          </div>
                     )}
-                    {/* BOTTOM: REFINE TOOLS */}
                     <div className="border-t border-slate-100 pt-6 mt-6 pb-6">
                         <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 block">Refine Edge</label>
                         <div className="grid grid-cols-3 gap-2 mb-4">
