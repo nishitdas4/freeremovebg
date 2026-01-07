@@ -60,7 +60,7 @@ export default function Remover() {
   
   // Gesture Refs
   const isDragging = useRef(false);
-  const lastPos = useRef({ x: 0, y: 0 }); // Mouse/Touch position
+  const lastPos = useRef({ x: 0, y: 0 }); 
   const initialPinchDist = useRef<number | null>(null);
   const initialScale = useRef(1);
 
@@ -313,7 +313,6 @@ export default function Remover() {
     ctx.putImageData(historyStack.current[historyStep.current], 0, 0); updateSubjectLayer(); renderMainCanvas();
   };
   
-  // --- UTILS ---
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]; if (!file) return;
     const img = new Image(); img.src = URL.createObjectURL(file);
@@ -381,7 +380,7 @@ export default function Remover() {
          {/* INTERACTIVE AREA */}
          <div ref={containerRef} className={`flex-1 relative ${!originalImage ? 'overflow-y-auto' : 'overflow-hidden'} bg-checkerboard cursor-grab active:cursor-grabbing`}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} onTouchMove={handlePointerMove} onTouchStart={handlePointerDown} onTouchEnd={handlePointerUp}
-            style={{ touchAction: 'none', cursor: activeTool === 'hand' ? (isPanning.current ? 'grabbing' : 'grab') : (brushMode !== 'none' ? 'none' : 'default') }}>
+            style={{ touchAction: 'none', cursor: activeTool === 'hand' ? (isDragging.current ? 'grabbing' : 'grab') : (brushMode !== 'none' ? 'none' : 'default') }}>
             
             {/* --- MOBILE FLOATING TOOLBAR (NEW) --- */}
             {hasProcessed && (
