@@ -2,8 +2,9 @@
   "ExpandedNodes": [
     "",
     "\\src",
+    "\\src\\app",
     "\\src\\components"
   ],
-  "SelectedNode": "\\src\\components\\Remover.tsx",
+  "SelectedNode": "\\src\\app\\page.tsx",
   "PreviewInSolutionExplorer": false
 }
